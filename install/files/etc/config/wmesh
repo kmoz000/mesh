@@ -1,0 +1,20 @@
+config wmesh 'global'
+	option enabled '0'
+	option role 'relay'
+	option net ''
+	option id ''
+	option controller_id ''
+	option controller_addr ''
+	option key_file '/etc/wmeshd/net.key'
+	option port '48213'
+
+	# --- optional wireless backhaul (leave backhaul_ssid empty to disable) ---
+	option backhaul_ssid ''
+	option backhaul_radio ''
+	option backhaul_sta_if 'wmbhsta0'
+	option backhaul_bssid ''
+	option backhaul_freq ''
+	option backhaul_4addr '0'
+
+	# --- optional GPS distance sync ---
+	option gps '0'

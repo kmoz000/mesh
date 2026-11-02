@@ -1,0 +1,73 @@
+#!/bin/sh /etc/rc.common
+# wmeshd — WantasticMesh daemon service (OpenWrt procd).
+#
+# ADDITIVE ONLY: this service never edits /etc/config/wireless and never runs
+# `wifi`. A wireless backhaul is created as a RUNTIME vdev (NL80211 NEW_INTERFACE,
+# cleared on stop/reboot); the existing production APs are left untouched.
+USE_PROCD=1
+START=99
+STOP=10
+BIN=/usr/sbin/wmeshd
+
+start_service() {
+	. /lib/functions.sh
+	config_load wmesh
+
+	local enabled role net nodeid controller_id key_file controller_addr port
+	local bh_ssid bh_radio bh_sta_if bh_bssid bh_freq bh_4addr gps
+	config_get_bool enabled global enabled 0
+	config_get role          global role 'relay'
+	config_get net           global net ''
+	config_get nodeid        global id ''
+	config_get controller_id global controller_id ''
+	config_get key_file      global key_file '/etc/wmeshd/net.key'
+	config_get controller_addr global controller_addr ''
+	config_get port          global port '48213'
+	config_get bh_ssid       global backhaul_ssid ''
+	config_get bh_radio      global backhaul_radio ''
+	config_get bh_sta_if     global backhaul_sta_if 'wmbhsta0'
+	config_get bh_bssid      global backhaul_bssid ''
+	config_get bh_freq       global backhaul_freq ''
+	config_get_bool bh_4addr global backhaul_4addr 0
+	config_get_bool gps      global gps 0
+
+	[ "$enabled" = "1" ] || { echo "wmeshd: disabled (uci set wmesh.global.enabled=1)"; return 0; }
+	[ -x "$BIN" ] || { echo "wmeshd: $BIN missing"; return 1; }
+	[ -n "$net" ]  || { echo "wmeshd: set wmesh.global.net"; return 1; }
+
+	local apmode
+	set --
+	if [ "$role" = "root" ]; then
+		apmode=root
+		set -- controller -net "$net" -port "$port" -state /tmp/wmesh-state.txt
+		[ -n "$nodeid" ] && set -- "$@" -id "$nodeid"
+		[ -f /etc/wmeshd/agents.txt ] && set -- "$@" -agents /etc/wmeshd/agents.txt
+	else
+		apmode=relay
+		[ -f "$key_file" ] || { echo "wmeshd: key file $key_file missing"; return 1; }
+		[ -n "$controller_id" ] || { echo "wmeshd: set wmesh.global.controller_id"; return 1; }
+		set -- agent -net "$net" -controller-id "$controller_id" -key-file "$key_file" -port "$port"
+		[ -n "$nodeid" ] && set -- "$@" -id "$nodeid"
+		[ -n "$controller_addr" ] && set -- "$@" -controller-addr "$controller_addr"
+	fi
+
+	# env is word-split into KEY=VAL pairs; values must be space-free (ours are).
+	local env="WMESH_AP_MODE=$apmode"
+	[ -n "$bh_ssid" ] && env="$env WMESH_BACKHAUL_SSID=$bh_ssid WMESH_BACKHAUL_RADIO=$bh_radio WMESH_BACKHAUL_STA_IF=$bh_sta_if"
+	[ -n "$bh_bssid" ] && env="$env WMESH_BACKHAUL_BSSID=$bh_bssid"
+	[ -n "$bh_freq" ] && env="$env WMESH_BACKHAUL_FREQ=$bh_freq"
+	[ "$bh_4addr" = "1" ] && env="$env WMESH_BACKHAUL_4ADDR=1"
+	[ "$gps" = "1" ] && env="$env WMESH_GPS=1"
+
+	procd_open_instance
+	procd_set_param command "$BIN" "$@"
+	procd_set_param env $env
+	procd_set_param respawn
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger wmesh
+}

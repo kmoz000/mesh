@@ -1,0 +1,7 @@
+/inventory/
+/build/
+# Device-pulled vendor libraries and generated link stubs (private artifacts,
+# not redistributable). Rebuild with tools/mkstubs.sh after pulling from device.
+/vendor-sysroot/
+.DS_Store
+/research/
